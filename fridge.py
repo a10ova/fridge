@@ -1,163 +1,77 @@
-import datetime
+from datetime import datetime, date
 from decimal import Decimal
 
+# словарь продуктов
+goods = {}
 
-def add(items, title, amount, expiration_date=None):
-    """
-    Добавляет продукт в словарь items.
-    :param items: Словарь с продуктами.
-    :param title: Название продукта.
-    :param amount: Количество продукта (Decimal).
-    :param expiration_date: Срок годности (строка в формате 'ГГГГ-ММ-ДД' или None).
-    """
-    if title not in items:
-        items[title] = []
 
+def add(name: str, amount, expiration_date: str | None = None): # Добавляет продукт в словарь goods.
+
+    name = name.strip()
+
+    # Приводим amount к Decimal (поддерживаем разные входные типы)
+    if not isinstance(amount, Decimal):
+        amount = Decimal(str(amount))
+
+    # Обрабатываем дату
     exp_date = None
     if expiration_date is not None:
-        exp_date = datetime.datetime.strptime(expiration_date, '%Y-%m-%d').date()
+        exp_date = datetime.strptime(expiration_date.strip(), "%Y-%m-%d").date()
 
-    new_batch = {
+    # Добавляем партию
+    if name not in goods:
+        goods[name] = []
+    goods[name].append({
         'amount': amount,
         'expiration_date': exp_date
-    }
-
-    items[title].append(new_batch)
+    })
 
 
-def add_by_note(items, note):
-    """
-    Добавляет продукт в словарь items, распарсив строку note.
-    :param items: Словарь с продуктами.
-    :param note: Строка в формате "<название> <количество> [<срок годности>]".
-    """
-    parts = note.split()
+def add_by_note(note: str): # Добавляет продукт по текстовой заметке.
 
-    if len(parts) >= 3 and parts[-1].count('-') >= 2:
-        expiration_date = parts[-1]
-        amount_str = parts[-2]
-        title = ' '.join(parts[:-2])
-    else:
-        expiration_date = None
-        amount_str = parts[-1]
-        title = ' '.join(parts[:-1])
+    parts = note.strip().split()
+    if len(parts) < 2:
+        raise ValueError("Заметка должна содержать хотя бы количество и название")
 
-    amount = Decimal(amount_str)
-    add(items, title, amount, expiration_date)
+    amount = Decimal(parts[0])
+    name = parts[1].strip()
+    expiration_date = parts[2].strip() if len(parts) > 2 else None
+
+    add(name, amount, expiration_date)
 
 
-def find(items, needle):
-    """
-    Ищет продукты, в названии которых содержится строка needle (без учета регистра).
-    :param items: Словарь с продуктами.
-    :param needle: Искомая подстрока.
-    :return: Список названий продуктов.
-    """
+def find(query: str) -> list[str]: #  Ищет продукты, в названии которых содержится query.
+
+    query = query.strip()
     result = []
-    needle_lower = needle.lower()
-
-    for title in items.keys():
-        if needle_lower in title.lower():
-            result.append(title)
-
+    for name in goods:
+        if query in name:
+            result.append(name)
     return result
 
 
-def amount(items, needle):
-    """
-    Возвращает общее количество продуктов, название которых содержит needle (без учета регистра).
-    :param items: Словарь с продуктами.
-    :param needle: Искомая подстрока.
-    :return: Общее количество (Decimal).
-    """
-    total_amount = Decimal('0')
-    needle_lower = needle.lower()
+def amount(name: str) -> Decimal: # Возвращает общее количество продукта с указанным названием.
 
-    for title, batches in items.items():
-        if needle_lower in title.lower():
-            for batch in batches:
-                total_amount += batch['amount']
+    name = name.strip()
+    if name not in goods:
+        return Decimal('0')
 
-    return total_amount
+    total = Decimal('0')
+    for batch in goods[name]:
+        total += batch['amount']
+    return total
 
 
-def expire(items, in_advance_days=0):
-    """
-    Возвращает список просроченных продуктов или продуктов, которые испортятся в ближайшие in_advance_days дней.
-    :param items: Словарь с продуктами.
-    :param in_advance_days: Количество дней вперед для проверки срока годности.
-    :return: Список кортежей вида (название_продукта, общее_количество).
-    """
-    result = []
-    today = datetime.date.today()
-    deadline = today + datetime.timedelta(days=in_advance_days)
+def expire() -> list[str]: # Возвращает список названий просроченных продуктов.
 
-    for title, batches in items.items():
-        total_expired_amount = Decimal('0')
+    today = date.today()
+    expired_products = set()
 
+    for name, batches in goods.items():
         for batch in batches:
             exp_date = batch['expiration_date']
-            if exp_date is not None and exp_date <= deadline:
-                total_expired_amount += batch['amount']
+            if exp_date is not None and exp_date < today:
+                expired_products.add(name)
+                break  # достаточно одной просроченной партии
 
-        if total_expired_amount > 0:
-            result.append((title, total_expired_amount))
-
-    return result
-
-
-# ==========================
-# ОСНОВНАЯ ПРОГРАММА (ДЕМОНСТРАЦИЯ РАБОТЫ)
-# ==========================
-
-if __name__ == "__main__":
-    # Создаем пустой холодильник
-    goods = {}
-
-    print("1️⃣  Создаем холодильник и добавляем продукты через add()...")
-    add(goods, 'Яйца', Decimal('10'), '2024-06-01')
-    add(goods, 'Яйца', Decimal('3'), '2024-06-15')
-    add(goods, 'Вода', Decimal('2.5'))
-    print("✅ Добавлено: Яйца (10 шт, 3 шт), Вода (2.5 кг)\n")
-
-    print("2️⃣  Добавляем продукты через add_by_note()...")
-    add_by_note(goods, 'Молоко 1.5 2024-05-25')
-    add_by_note(goods, 'Сыр моцарелла 0.3')
-    print("✅ Добавлено: Молоко (1.5 кг), Сыр моцарелла (0.3 кг)\n")
-
-    print("3️⃣  Текущее содержимое холодильника:")
-    for product, batches in goods.items():
-        print(f"  {product}:")
-        for i, batch in enumerate(batches, 1):
-            exp = batch['expiration_date'] or "Бессрочно"
-            print(f"    Партия {i}: {batch['amount']} кг/шт, срок: {exp}")
-    print()
-
-    print("4️⃣  Поиск продуктов по слову 'яйц':")
-    found = find(goods, 'яйц')
-    print("   Найдено:", found)
-    print()
-
-    print("5️⃣  Общее количество по запросу 'яйца':")
-    total = amount(goods, 'яйца')
-    print(f"   Всего: {total} шт/кг")
-    print()
-
-    print("6️⃣  Проверка просроченных продуктов (на сегодня):")
-    expired = expire(goods, 0)
-    if expired:
-        for product, qty in expired:
-            print(f"   ❗ {product}: {qty} шт/кг")
-    else:
-        print("   ✅ Ничего не испортилось!")
-    print()
-
-    print("7️⃣  Что испортится в ближайшие 10 дней:")
-    expiring = expire(goods, 10)
-    if expiring:
-        for product, qty in expiring:
-            print(f"   ⚠️  {product}: {qty} шт/кг")
-    else:
-        print("   ✅ Ничего не испортится в ближайшие 10 дней.")
-    print()
-
+    return sorted(expired_products)
